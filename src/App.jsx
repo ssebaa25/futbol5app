@@ -315,6 +315,14 @@ function PartidoScreen({ players, matches, saveMatches }) {
     actualizar({ estado: 'armado', equipoA: teamA, equipoB: teamB });
   }
 
+  function cancelarPartido() {
+    saveMatches(matches.filter((m) => m.id !== activo.id));
+  }
+
+  function volverAConvocatoria() {
+    actualizar({ estado: 'convocando', equipoA: [], equipoB: [] });
+  }
+
   function moverJugador(id, hacia) {
     const equipoA = activo.equipoA.filter((x) => x !== id);
     const equipoB = activo.equipoB.filter((x) => x !== id);
@@ -362,6 +370,9 @@ function PartidoScreen({ players, matches, saveMatches }) {
   if (activo.estado === 'convocando') {
     return (
       <div className="max-w-md mx-auto">
+        <button onClick={cancelarPartido} className="flex items-center gap-1 text-sm text-stone-500 mb-3">
+          <ChevronLeft size={16} /> Volver (cancela este partido)
+        </button>
         <Board title={new Date(activo.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })} subtitle="Convocatoria" />
         <div className="bg-white rounded-b-2xl p-4 border border-t-0 border-stone-200">
           <p className="text-sm text-stone-500 mb-3">{activo.convocados.length} anotados</p>
@@ -396,6 +407,9 @@ function PartidoScreen({ players, matches, saveMatches }) {
   if (activo.estado === 'armado') {
     return (
       <div className="max-w-md mx-auto">
+        <button onClick={volverAConvocatoria} className="flex items-center gap-1 text-sm text-stone-500 mb-3">
+          <ChevronLeft size={16} /> Volver a la convocatoria
+        </button>
         <Board title="Equipos sugeridos" subtitle="Tocá un jugador para cambiarlo de equipo" />
         <div className="bg-white rounded-b-2xl p-4 border border-t-0 border-stone-200">
           <div className="grid grid-cols-2 gap-3 mb-4">
