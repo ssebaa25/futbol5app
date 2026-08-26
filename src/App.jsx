@@ -626,7 +626,7 @@ function HistorialPartidos({ matches, players, onSelect }) {
 
 // ---------- Estadísticas ----------
 
-function calcularStats(players, matches, umbralForma) {
+function calcularStats(players, matches) {
   const jugados = matches.filter((m) => m.estado === 'jugado');
 
   function base(id) {
@@ -744,28 +744,39 @@ function calcularStats(players, matches, umbralForma) {
     return worst;
   }
 
-  function nivelFormaDe(id) {
+  // Tabla de cambio de nivel según victorias/empates/derrotas de los últimos 5 partidos
+  const TABLA_CAMBIO = {
+    '5-0-0': 2, '4-1-0': 2, '4-0-1': 1, '3-2-0': 1, '3-1-1': 1, '3-0-2': 0,
+    '2-3-0': 1, '2-2-1': 0, '2-1-2': 0, '2-0-3': -1, '1-4-0': 0, '1-3-1': 0,
+    '1-2-2': 0, '1-1-3': -1, '1-0-4': -2, '0-5-0': 0, '0-4-1': -1, '0-3-2': -1,
+    '0-2-3': -1, '0-1-4': -2, '0-0-5': -2,
+  };
+
+  function nivelEstrellasDe(id) {
     const propios = jugados.filter((m) => m.equipoA.includes(id) || m.equipoB.includes(id)).slice().sort((a, b) => a.fecha.localeCompare(b.fecha));
-    let nivel = 0, balance = 0;
-    for (const m of propios) {
+    const ultimos5 = propios.slice(-5);
+    const resultados = ultimos5.map((m) => {
       const team = m.equipoA.includes(id) ? 'A' : 'B';
-      const res = m.resultado.ganador === 'empate' ? 0 : m.resultado.ganador === team ? 1 : -1;
-      balance += res;
-      if (balance >= umbralForma) { nivel = Math.min(10, nivel + 1); balance = 0; }
-      else if (balance <= -umbralForma) { nivel = Math.max(0, nivel - 1); balance = 0; }
-    }
-    return { nivel, balance };
+      return m.resultado.ganador === 'empate' ? 'E' : m.resultado.ganador === team ? 'V' : 'D';
+    });
+    if (resultados.length < 5) return { nivel: null, resultados };
+    const v = resultados.filter((r) => r === 'V').length;
+    const e = resultados.filter((r) => r === 'E').length;
+    const d = resultados.filter((r) => r === 'D').length;
+    const cambio = TABLA_CAMBIO[v + '-' + e + '-' + d] ?? 0;
+    const nivel = Math.max(1, Math.min(10, 5 + cambio));
+    return { nivel, resultados };
   }
 
-  const nivelFormaRanking = players.map((pl) => ({ ...pl, ...nivelFormaDe(pl.id) })).sort((a, b) => b.nivel - a.nivel);
+  const estrellasRanking = players.map((pl) => ({ ...pl, ...nivelEstrellasDe(pl.id) })).sort((a, b) => (b.nivel ?? -1) - (a.nivel ?? -1));
 
-  return { ranking, jugados, duplas: duplas(), cabezaACabeza: cabezaACabeza(), rachaDe, mejorDuplaDe, mejorVictoriaDe, peorDerrotaDe, grupo: grupo(), nivelFormaDe, nivelFormaRanking };
+  return { ranking, jugados, duplas: duplas(), cabezaACabeza: cabezaACabeza(), rachaDe, mejorDuplaDe, mejorVictoriaDe, peorDerrotaDe, grupo: grupo(), nivelEstrellasDe, estrellasRanking };
 }
 
-function StatsScreen({ players, matches, umbralForma, setUmbralForma }) {
+function StatsScreen({ players, matches }) {
   const [tab, setTab] = useState('ranking');
   const [jugadorId, setJugadorId] = useState(null);
-  const stats = useMemo(() => calcularStats(players, matches, umbralForma), [players, matches, umbralForma]);
+  const stats = useMemo(() => calcularStats(players, matches), [players, matches]);
   const nombreDe = (id) => players.find((p) => p.id === id)?.nombre || '?';
 
   if (jugadorId) {
@@ -775,7 +786,7 @@ function StatsScreen({ players, matches, umbralForma, setUmbralForma }) {
     const dupla = stats.mejorDuplaDe(jugadorId);
     const mejorVictoria = stats.mejorVictoriaDe(jugadorId);
     const peorDerrota = stats.peorDerrotaDe(jugadorId);
-    const forma = stats.nivelFormaDe(jugadorId);
+    const estrellas = stats.nivelEstrellasDe(jugadorId);
     const fechaCorta = (f) => new Date(f + 'T12:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });
     return (
       <div className="-m-4 p-4" style={{ backgroundImage: `linear-gradient(rgba(245,245,244,0.55), rgba(245,245,244,0.65)), url(${FONDO_ESTADIO})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
@@ -787,10 +798,11 @@ function StatsScreen({ players, matches, umbralForma, setUmbralForma }) {
         <div className="rounded-b-2xl p-4 border border-t-0 border-stone-200" style={TARJETA_STATS}>
           <div className="mb-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-xs text-stone-500">Nivel de forma</p>
-              <p className="text-sm font-medium text-stone-800">{forma.nivel}/10</p>
+              <p className="text-xs text-stone-500">Estrellas de calidad</p>
+              <p className="text-sm font-medium text-stone-800">{estrellas.nivel ?? '-'}/10</p>
             </div>
-            <BarraNivel valor={forma.nivel} />
+            <EstrellasRow nivel={estrellas.nivel} />
+            <UltimosCirculos resultados={estrellas.resultados} />
           </div>
           <div className="grid grid-cols-3 gap-2 mb-2">
             <StatCard label="Partidos" value={b.pj} />
@@ -824,6 +836,7 @@ function StatsScreen({ players, matches, umbralForma, setUmbralForma }) {
                 { text: 'Efectividad: ' + b.efectividad + '%' },
                 { text: 'Goles: ' + b.goles },
                 { text: 'G/E/P: ' + b.g + '/' + b.e + '/' + b.p },
+                { text: 'Estrellas de calidad: ' + (estrellas.nivel ?? '-') + '/10' },
               ],
             })}
             className="w-full border border-stone-300 text-stone-700 rounded-lg py-3 font-medium flex items-center justify-center gap-2 mt-4"
@@ -841,7 +854,7 @@ function StatsScreen({ players, matches, umbralForma, setUmbralForma }) {
     <div className="max-w-md mx-auto">
       <h1 className="text-lg font-medium text-stone-800 mb-3">Estadísticas</h1>
       <div className="flex gap-1 overflow-x-auto mb-4 pb-1">
-        {[['ranking', 'Ranking'], ['forma', 'Nivel de forma'], ['duplas', 'Duplas y tríos'], ['h2h', 'Cabeza a cabeza'], ['rachas', 'Rachas'], ['grupo', 'Grupo']].map(([id, label]) => (
+        {[['ranking', 'Ranking'], ['estrellas', 'Estrellas de calidad'], ['duplas', 'Duplas y tríos'], ['h2h', 'Cabeza a cabeza'], ['rachas', 'Rachas'], ['grupo', 'Grupo']].map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -853,88 +866,111 @@ function StatsScreen({ players, matches, umbralForma, setUmbralForma }) {
       </div>
 
       {tab === 'ranking' && (
-        <RankingTab stats={stats} onJugador={setJugadorId} />
-      )}
-      {tab === 'forma' && (
         <div>
-          <div className="border border-stone-200 rounded-xl p-4 mb-3" style={TARJETA_STATS}>
-            <p className="text-sm text-stone-500 mb-2">Sensibilidad: sube o baja un nivel cada</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="1"
-                className="w-16 border border-stone-300 rounded-lg px-2 py-1 text-center"
-                value={umbralForma}
-                onChange={(e) => setUmbralForma(Math.max(1, parseInt(e.target.value) || 1))}
-              />
-              <span className="text-sm text-stone-600">puntos de diferencia (victoria +1, derrota -1, empate 0)</span>
-            </div>
-          </div>
+          <RankingTab stats={stats} onJugador={setJugadorId} />
+          <BotonCompartirTab
+            titulo="Ranking general"
+            lineas={stats.ranking.slice().sort((a, b) => b.efectividad - a.efectividad).map((r) => ({ text: r.nombre + ' - ' + r.efectividad + '% (' + r.pj + ' PJ)' }))}
+          />
+        </div>
+      )}
+      {tab === 'estrellas' && (
+        <div>
           <ListaCombinada
-            items={stats.nivelFormaRanking}
+            items={stats.estrellasRanking}
             vacio="Todavía no hay jugadores cargados."
             render={(p) => (
-              <div key={p.id} className="border border-stone-200 rounded-xl p-3" style={TARJETA_STATS}>
+              <div key={p.id} className="border border-stone-200 rounded-xl p-3 mb-2" style={TARJETA_STATS}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-sm text-stone-700">{p.nombre}</span>
-                  <span className="text-sm font-medium text-emerald-700">{p.nivel}/10</span>
+                  <span className="text-sm font-medium text-emerald-700">{p.nivel ?? '-'}/10</span>
                 </div>
-                <BarraNivel valor={p.nivel} />
+                <UltimosCirculos resultados={p.resultados} />
+                <div className="mt-1.5">
+                  <EstrellasRow nivel={p.nivel} />
+                </div>
+                {p.nivel === null && <p className="text-xs text-stone-400 mt-1">Necesita 5 partidos jugados para calcular</p>}
               </div>
             )}
+          />
+          <BotonCompartirTab
+            titulo="Estrellas de calidad"
+            lineas={stats.estrellasRanking.filter((p) => p.nivel !== null).map((p) => ({ text: p.nombre + ' - ' + p.nivel + '/10' }))}
           />
         </div>
       )}
       {tab === 'duplas' && (
-        <ListaCombinada
-          items={stats.duplas}
-          vacio="Todavía no hay duplas con 3 o más partidos jugados juntos."
-          render={(d) => (
-            <div key={d.a + d.b} className="flex items-center justify-between border border-stone-200 rounded-xl p-3" style={TARJETA_STATS}>
-              <span className="text-sm text-stone-700">{nombreDe(d.a)} + {nombreDe(d.b)}</span>
-              <span className="text-sm font-medium text-emerald-700">{d.pct}% ({d.jugados} juntos)</span>
-            </div>
-          )}
-        />
+        <div>
+          <ListaCombinada
+            items={stats.duplas}
+            vacio="Todavía no hay duplas con 3 o más partidos jugados juntos."
+            render={(d) => (
+              <div key={d.a + d.b} className="flex items-center justify-between border border-stone-200 rounded-xl p-3 mb-2" style={TARJETA_STATS}>
+                <span className="text-sm text-stone-700">{nombreDe(d.a)} + {nombreDe(d.b)}</span>
+                <span className="text-sm font-medium text-emerald-700">{d.pct}% ({d.jugados} juntos)</span>
+              </div>
+            )}
+          />
+          <BotonCompartirTab
+            titulo="Duplas y tríos"
+            lineas={stats.duplas.map((d) => ({ text: nombreDe(d.a) + ' + ' + nombreDe(d.b) + ' - ' + d.pct + '%' }))}
+          />
+        </div>
       )}
       {tab === 'h2h' && (
-        <ListaCombinada
-          items={stats.cabezaACabeza}
-          vacio="Todavía no hay rivalidades con 3 o más enfrentamientos."
-          render={(h) => (
-            <div key={h.ganador + h.perdedor} className="flex items-center justify-between border border-stone-200 rounded-xl p-3" style={TARJETA_STATS}>
-              <span className="text-sm text-stone-700">{nombreDe(h.ganador)} le ganó a {nombreDe(h.perdedor)}</span>
-              <span className="text-sm font-medium text-emerald-700">{h.n} veces</span>
-            </div>
-          )}
-        />
+        <div>
+          <ListaCombinada
+            items={stats.cabezaACabeza}
+            vacio="Todavía no hay rivalidades con 3 o más enfrentamientos."
+            render={(h) => (
+              <div key={h.ganador + h.perdedor} className="flex items-center justify-between border border-stone-200 rounded-xl p-3 mb-2" style={TARJETA_STATS}>
+                <span className="text-sm text-stone-700">{nombreDe(h.ganador)} le ganó a {nombreDe(h.perdedor)}</span>
+                <span className="text-sm font-medium text-emerald-700">{h.n} veces</span>
+              </div>
+            )}
+          />
+          <BotonCompartirTab
+            titulo="Cabeza a cabeza"
+            lineas={stats.cabezaACabeza.map((h) => ({ text: nombreDe(h.ganador) + ' le ganó a ' + nombreDe(h.perdedor) + ' - ' + h.n + ' veces' }))}
+          />
+        </div>
       )}
       {tab === 'rachas' && (
-        <ListaCombinada
-          items={stats.ranking.filter((r) => r.pj > 0).map((r) => ({ ...r, racha: stats.rachaDe(r.id) })).sort((a, b) => b.racha.mejorRachaGanadora - a.racha.mejorRachaGanadora)}
-          vacio="Todavía no hay partidos jugados."
-          render={(r) => (
-            <div key={r.id} className="border border-stone-200 rounded-xl p-3" style={TARJETA_STATS}>
-              <p className="text-sm text-stone-700 mb-1.5">{r.nombre}</p>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <p className="text-xs text-stone-400">Actual</p>
-                  <p className="text-sm font-medium text-stone-800">
-                    {r.racha.tipo ? r.racha.streak + ' ' + (r.racha.tipo === 'G' ? 'G' : r.racha.tipo === 'P' ? 'P' : 'E') : '-'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-stone-400">Mejor racha ganadora</p>
-                  <p className="text-sm font-medium text-emerald-700">{r.racha.mejorRachaGanadora}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-stone-400">Peor racha perdedora</p>
-                  <p className="text-sm font-medium text-red-600">{r.racha.mejorRachaPerdedora}</p>
+        <div>
+          <ListaCombinada
+            items={stats.ranking.filter((r) => r.pj > 0).map((r) => ({ ...r, racha: stats.rachaDe(r.id) })).sort((a, b) => b.racha.mejorRachaGanadora - a.racha.mejorRachaGanadora)}
+            vacio="Todavía no hay partidos jugados."
+            render={(r) => (
+              <div key={r.id} className="border border-stone-200 rounded-xl p-3 mb-2" style={TARJETA_STATS}>
+                <p className="text-sm text-stone-700 mb-1.5">{r.nombre}</p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-xs text-stone-400">Actual</p>
+                    <p className="text-sm font-medium text-stone-800">
+                      {r.racha.tipo ? r.racha.streak + ' ' + (r.racha.tipo === 'G' ? 'ganados' : r.racha.tipo === 'P' ? 'perdidos' : 'empatados') : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-stone-400">Mejor racha ganadora</p>
+                    <p className="text-sm font-medium text-emerald-700">{r.racha.mejorRachaGanadora}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-stone-400">Peor racha perdedora</p>
+                    <p className="text-sm font-medium text-red-600">{r.racha.mejorRachaPerdedora}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        />
+            )}
+          />
+          <BotonCompartirTab
+            titulo="Rachas"
+            lineas={stats.ranking.filter((r) => r.pj > 0).map((r) => {
+              const racha = stats.rachaDe(r.id);
+              const actual = racha.tipo ? racha.streak + ' ' + (racha.tipo === 'G' ? 'ganados' : racha.tipo === 'P' ? 'perdidos' : 'empatados') : '-';
+              return { text: r.nombre + ' - actual: ' + actual };
+            })}
+          />
+        </div>
       )}
       {tab === 'grupo' && (
         <div>
@@ -951,6 +987,11 @@ function StatsScreen({ players, matches, umbralForma, setUmbralForma }) {
               </div>
             ))}
           </div>
+          <BotonCompartirTab
+            titulo="Estadísticas del grupo"
+            subtitulo={'Empates: ' + stats.grupo.empates + '%'}
+            lineas={stats.grupo.asistencia.map((p) => ({ text: p.nombre + ' - ' + p.pct + '% asistencia' }))}
+          />
         </div>
       )}
     </div>
@@ -958,12 +999,39 @@ function StatsScreen({ players, matches, umbralForma, setUmbralForma }) {
   );
 }
 
-function BarraNivel({ valor }) {
-  const pct = Math.max(0, Math.min(10, valor)) * 10;
+function UltimosCirculos({ resultados }) {
+  if (!resultados || resultados.length === 0) return <p className="text-xs text-stone-400">Sin partidos todavía</p>;
+  const color = { V: 'bg-emerald-500', D: 'bg-red-500', E: 'bg-amber-400' };
   return (
-    <div className="w-full h-2 bg-stone-100 rounded-full overflow-hidden">
-      <div className="h-full bg-emerald-600 rounded-full" style={{ width: pct + '%' }} />
+    <div className="flex gap-1.5">
+      {resultados.map((r, i) => (
+        <div key={i} className={'w-3 h-3 rounded-full ' + color[r]} />
+      ))}
     </div>
+  );
+}
+
+function EstrellasRow({ nivel }) {
+  if (nivel === null || nivel === undefined) {
+    return <p className="text-xs text-stone-400">Necesita 5 partidos jugados</p>;
+  }
+  return (
+    <div className="flex gap-0.5">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <Star key={i} size={14} className={i < nivel ? 'text-amber-400 fill-amber-400' : 'text-stone-200'} />
+      ))}
+    </div>
+  );
+}
+
+function BotonCompartirTab({ titulo, subtitulo, lineas }) {
+  return (
+    <button
+      onClick={() => compartir({ titulo, subtitulo: subtitulo || 'Estadísticas', lineas })}
+      className="w-full border border-stone-300 text-stone-700 rounded-lg py-3 font-medium flex items-center justify-center gap-2 mt-3 bg-white"
+    >
+      <Share2 size={16} /> Compartir esta solapa
+    </button>
   );
 }
 
@@ -1010,7 +1078,6 @@ export default function App() {
   const [tab, setTab] = useState('jugadores');
   const [players, setPlayers] = useState([]);
   const [matches, setMatches] = useState([]);
-  const [umbralForma, setUmbralFormaState] = useState(2);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -1023,10 +1090,6 @@ export default function App() {
         const m = await storage.get('matches');
         setMatches(m ? JSON.parse(m.value) : []);
       } catch (e) { setMatches([]); }
-      try {
-        const c = await storage.get('config');
-        if (c) setUmbralFormaState(JSON.parse(c.value).umbralForma ?? 2);
-      } catch (e) {}
       setReady(true);
     })();
   }, []);
@@ -1039,10 +1102,6 @@ export default function App() {
     setMatches(next);
     try { await storage.set('matches', JSON.stringify(next)); } catch (e) {}
   }
-  async function setUmbralForma(next) {
-    setUmbralFormaState(next);
-    try { await storage.set('config', JSON.stringify({ umbralForma: next })); } catch (e) {}
-  }
 
   if (!ready) {
     return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm">Cargando...</div>;
@@ -1053,7 +1112,7 @@ export default function App() {
       <div className="p-4">
         {tab === 'jugadores' && <JugadoresScreen players={players} savePlayers={savePlayers} />}
         {tab === 'partido' && <PartidoScreen players={players} matches={matches} saveMatches={saveMatches} />}
-        {tab === 'stats' && <StatsScreen players={players} matches={matches} umbralForma={umbralForma} setUmbralForma={setUmbralForma} />}
+        {tab === 'stats' && <StatsScreen players={players} matches={matches} />}
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 flex" style={{ position: 'sticky' }}>
         {TABS.map(({ id, label, icon: Icon }) => (
