@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Users, Calendar, BarChart3, Plus, Trash2, Share2, Star, Trophy, ArrowLeftRight, Check, X, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, onAuthStateChanged, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -1087,6 +1087,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [ready, setReady] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -1125,7 +1126,10 @@ export default function App() {
   }
 
   function iniciarSesion() {
-    signInWithRedirect(auth, googleProvider);
+    setLoginError('');
+    signInWithPopup(auth, googleProvider).catch((e) => {
+      setLoginError(e.code || e.message || 'Error desconocido al iniciar sesión');
+    });
   }
   function cerrarSesion() {
     signOut(auth);
@@ -1155,6 +1159,7 @@ export default function App() {
           <button onClick={iniciarSesion} className="w-full bg-white border border-stone-300 text-stone-800 rounded-lg py-3 font-medium">
             Iniciar sesión con Google
           </button>
+          {loginError && <p className="text-xs text-red-600 mt-3 text-center">{loginError}</p>}
         </div>
       </div>
     );
