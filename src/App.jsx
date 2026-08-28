@@ -1,17 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Calendar, BarChart3, Plus, Trash2, Share2, Star, Trophy, ArrowLeftRight, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Calendar, BarChart3, Plus, Trash2, Share2, Star, Trophy, ArrowLeftRight, Check, X, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, onAuthStateChanged, signOut } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence } from 'firebase/firestore';
 
-// Guardado local en el celular (reemplaza window.storage, que solo existe dentro de Claude)
-const storage = {
-  async get(key) {
-    const v = localStorage.getItem(key);
-    return v === null ? null : { key, value: v };
-  },
-  async set(key, value) {
-    localStorage.setItem(key, value);
-    return { key, value };
-  },
+const firebaseConfig = {
+  apiKey: "AIzaSyB54fPMEPo6y4VzR_0g05XnnfUqg0BCckw",
+  authDomain: "futbol5app.firebaseapp.com",
+  projectId: "futbol5app",
+  storageBucket: "futbol5app.firebasestorage.app",
+  messagingSenderId: "903209518241",
+  appId: "1:903209518241:web:84f140c4709ef7a70b5ce0",
 };
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
+try { enableIndexedDbPersistence(db); } catch (e) {}
 
 const POSICIONES = ['Arquero', 'Defensor', 'Mediocampista', 'Delantero'];
 const TABS = [
@@ -1078,37 +1084,94 @@ export default function App() {
   const [tab, setTab] = useState('jugadores');
   const [players, setPlayers] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const p = await storage.get('players');
-        setPlayers(p ? JSON.parse(p.value) : []);
-      } catch (e) { setPlayers([]); }
-      try {
-        const m = await storage.get('matches');
-        setMatches(m ? JSON.parse(m.value) : []);
-      } catch (e) { setMatches([]); }
-      setReady(true);
-    })();
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthReady(true);
+    });
+    return unsub;
   }, []);
+
+  useEffect(() => {
+    if (!user) { setPlayers([]); setMatches([]); setReady(true); return; }
+    setReady(false);
+    const ref = doc(db, 'users', user.uid);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.data() || {};
+        setPlayers(data.players || []);
+        setMatches(data.matches || []);
+        setReady(true);
+      },
+      () => setReady(true)
+    );
+    return unsub;
+  }, [user]);
 
   async function savePlayers(next) {
     setPlayers(next);
-    try { await storage.set('players', JSON.stringify(next)); } catch (e) {}
+    if (!user) return;
+    try { await setDoc(doc(db, 'users', user.uid), { players: next }, { merge: true }); } catch (e) {}
   }
   async function saveMatches(next) {
     setMatches(next);
-    try { await storage.set('matches', JSON.stringify(next)); } catch (e) {}
+    if (!user) return;
+    try { await setDoc(doc(db, 'users', user.uid), { matches: next }, { merge: true }); } catch (e) {}
+  }
+
+  function iniciarSesion() {
+    signInWithRedirect(auth, googleProvider);
+  }
+  function cerrarSesion() {
+    signOut(auth);
+  }
+
+  if (!authReady) {
+    return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm">Cargando...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-stone-100 p-4">
+        <div className="max-w-sm w-full">
+          <div
+            className="rounded-2xl px-6 text-center mb-4"
+            style={{
+              backgroundImage: `linear-gradient(rgba(15,110,86,0.55), rgba(15,110,86,0.85)), url(${FONDO_CANCHA})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              paddingTop: 56,
+              paddingBottom: 56,
+            }}
+          >
+            <p className="text-white text-2xl font-medium">Fútbol 5</p>
+            <p className="text-emerald-100 text-sm mt-1">Iniciá sesión para sincronizar tus datos en la nube</p>
+          </div>
+          <button onClick={iniciarSesion} className="w-full bg-white border border-stone-300 text-stone-800 rounded-lg py-3 font-medium">
+            Iniciar sesión con Google
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!ready) {
-    return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm">Cargando...</div>;
+    return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm">Cargando tus datos...</div>;
   }
 
   return (
     <div className="min-h-screen bg-stone-100 pb-20">
+      <div className="flex items-center justify-between px-4 pt-3 text-xs text-stone-400">
+        <span className="truncate">{user.displayName || user.email}</span>
+        <button onClick={cerrarSesion} className="flex items-center gap-1 text-stone-500">
+          <LogOut size={12} /> Cerrar sesión
+        </button>
+      </div>
       <div className="p-4">
         {tab === 'jugadores' && <JugadoresScreen players={players} savePlayers={savePlayers} />}
         {tab === 'partido' && <PartidoScreen players={players} matches={matches} saveMatches={saveMatches} />}
