@@ -1087,6 +1087,8 @@ function VistaPublica() {
   const [players, setPlayers] = useState([]);
   const [matches, setMatches] = useState([]);
   const [ready, setReady] = useState(false);
+  const [seccion, setSeccion] = useState('stats');
+  const [verId, setVerId] = useState(null);
 
   useEffect(() => {
     const ref = doc(db, 'users', PUBLIC_UID);
@@ -1107,11 +1109,44 @@ function VistaPublica() {
     return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm">Cargando...</div>;
   }
 
+  const verPartido = verId ? matches.find((m) => m.id === verId) : null;
+  const jugados = matches.filter((m) => m.estado === 'jugado');
+
   return (
     <div className="min-h-screen bg-stone-100">
       <div className="text-center text-xs text-stone-400 pt-3">Vista pública, solo lectura</div>
+      <div className="flex justify-center gap-2 pt-3">
+        <button
+          onClick={() => { setSeccion('stats'); setVerId(null); }}
+          className={'px-4 py-1.5 rounded-full text-sm ' + (seccion === 'stats' ? 'bg-emerald-800 text-white' : 'bg-stone-200 text-stone-600')}
+        >
+          Estadísticas
+        </button>
+        <button
+          onClick={() => { setSeccion('historial'); setVerId(null); }}
+          className={'px-4 py-1.5 rounded-full text-sm ' + (seccion === 'historial' ? 'bg-emerald-800 text-white' : 'bg-stone-200 text-stone-600')}
+        >
+          Historial de partidos
+        </button>
+      </div>
       <div className="p-4">
-        <StatsScreen players={players} matches={matches} />
+        {seccion === 'stats' && <StatsScreen players={players} matches={matches} />}
+        {seccion === 'historial' && (
+          <div className="max-w-md mx-auto">
+            {verPartido ? (
+              <>
+                <button onClick={() => setVerId(null)} className="flex items-center gap-1 text-sm text-stone-500 mb-3">
+                  <ChevronLeft size={16} /> Volver al historial
+                </button>
+                <ResumenPartido partido={verPartido} players={players} />
+              </>
+            ) : jugados.length === 0 ? (
+              <p className="text-stone-400 text-sm text-center py-10">Todavía no hay partidos jugados.</p>
+            ) : (
+              <HistorialPartidos matches={matches} players={players} onSelect={setVerId} />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
