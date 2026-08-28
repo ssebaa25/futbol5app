@@ -19,6 +19,9 @@ const db = getFirestore(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 try { enableIndexedDbPersistence(db); } catch (e) {}
 
+// UID de la cuenta cuyos datos se muestran en el link público de solo lectura (Firebase → Authentication → Users)
+const PUBLIC_UID = "NBFf5DStRNbW2iGp0RD8juxTxAN2";
+
 const POSICIONES = ['Arquero', 'Defensor', 'Mediocampista', 'Delantero'];
 const TABS = [
   { id: 'jugadores', label: 'Jugadores', icon: Users },
@@ -1080,7 +1083,44 @@ function RankingTab({ stats, onJugador }) {
 
 // ---------- App ----------
 
+function VistaPublica() {
+  const [players, setPlayers] = useState([]);
+  const [matches, setMatches] = useState([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const ref = doc(db, 'users', PUBLIC_UID);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.data() || {};
+        setPlayers(data.players || []);
+        setMatches(data.matches || []);
+        setReady(true);
+      },
+      () => setReady(true)
+    );
+    return unsub;
+  }, []);
+
+  if (!ready) {
+    return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm">Cargando...</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-stone-100">
+      <div className="text-center text-xs text-stone-400 pt-3">Vista pública, solo lectura</div>
+      <div className="p-4">
+        <StatsScreen players={players} matches={matches} />
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const modoPublico = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('stats') === '1';
+  if (modoPublico) return <VistaPublica />;
+
   const [tab, setTab] = useState('jugadores');
   const [players, setPlayers] = useState([]);
   const [matches, setMatches] = useState([]);
