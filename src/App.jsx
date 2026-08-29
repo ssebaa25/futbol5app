@@ -677,6 +677,14 @@ function HistorialPartidos({ matches, players, onSelect }) {
 
 function calcularStats(players, matches) {
   const jugados = matches.filter((m) => m.estado === 'jugado');
+  const UMBRAL_INACTIVIDAD_DIAS = 45;
+
+  function diasSinJugarDe(id) {
+    const propios = jugados.filter((m) => m.equipoA.includes(id) || m.equipoB.includes(id));
+    if (propios.length === 0) return null;
+    const ultima = propios.reduce((max, m) => (m.fecha > max ? m.fecha : max), propios[0].fecha);
+    return Math.floor((Date.now() - new Date(ultima + 'T12:00').getTime()) / (1000 * 60 * 60 * 24));
+  }
 
   function base(id) {
     let pj = 0, g = 0, e = 0, p = 0, goles = 0;
@@ -693,7 +701,7 @@ function calcularStats(players, matches) {
     return { pj, g, e, p, goles, efectividad: pj > 0 ? Math.round((g / pj) * 100) : 0 };
   }
 
-  const ranking = players.map((pl) => ({ ...pl, ...base(pl.id) }));
+  const ranking = players.map((pl) => ({ ...pl, ...base(pl.id), diasSinJugar: diasSinJugarDe(pl.id) }));
 
   function duplas() {
     const map = {};
@@ -801,6 +809,8 @@ function calcularStats(players, matches) {
     '0-2-3': -1, '0-1-4': -2, '0-0-5': -2,
   };
 
+  const UMBRAL_RESET_ESTRELLAS_DIAS = 60;
+
   function nivelEstrellasDe(id) {
     const propios = jugados.filter((m) => m.equipoA.includes(id) || m.equipoB.includes(id)).slice().sort((a, b) => a.fecha.localeCompare(b.fecha));
     const ultimos5 = propios.slice(-5);
@@ -809,6 +819,8 @@ function calcularStats(players, matches) {
       return m.resultado.ganador === 'empate' ? 'E' : m.resultado.ganador === team ? 'V' : 'D';
     });
     if (resultados.length < 5) return { nivel: null, resultados };
+    const dias = diasSinJugarDe(id);
+    if (dias !== null && dias > UMBRAL_RESET_ESTRELLAS_DIAS) return { nivel: 0, resultados };
     const v = resultados.filter((r) => r === 'V').length;
     const e = resultados.filter((r) => r === 'E').length;
     const d = resultados.filter((r) => r === 'D').length;
@@ -817,14 +829,15 @@ function calcularStats(players, matches) {
     return { nivel, resultados };
   }
 
-  const estrellasRanking = players.map((pl) => ({ ...pl, ...nivelEstrellasDe(pl.id) })).sort((a, b) => (b.nivel ?? -1) - (a.nivel ?? -1));
+  const estrellasRanking = players.map((pl) => ({ ...pl, ...nivelEstrellasDe(pl.id), diasSinJugar: diasSinJugarDe(pl.id) })).sort((a, b) => (b.nivel ?? -1) - (a.nivel ?? -1));
 
-  return { ranking, jugados, duplas: duplas(), cabezaACabeza: cabezaACabeza(), rachaDe, mejorDuplaDe, mejorVictoriaDe, peorDerrotaDe, grupo: grupo(), nivelEstrellasDe, estrellasRanking };
+  return { ranking, jugados, duplas: duplas(), cabezaACabeza: cabezaACabeza(), rachaDe, mejorDuplaDe, mejorVictoriaDe, peorDerrotaDe, grupo: grupo(), nivelEstrellasDe, estrellasRanking, UMBRAL_INACTIVIDAD_DIAS, UMBRAL_RESET_ESTRELLAS_DIAS };
 }
 
 function StatsScreen({ players, matches }) {
   const [tab, setTab] = useState('ranking');
   const [jugadorId, setJugadorId] = useState(null);
+  const [infoAbierto, setInfoAbierto] = useState(null);
   const stats = useMemo(() => calcularStats(players, matches), [players, matches]);
   const nombreDe = (id) => players.find((p) => p.id === id)?.nombre || '?';
 
@@ -899,6 +912,7 @@ function StatsScreen({ players, matches }) {
   }
 
   return (
+    <>
     <div className="-m-4 p-4" style={{ backgroundImage: `linear-gradient(rgba(245,245,244,0.55), rgba(245,245,244,0.65)), url(${FONDO_ESTADIO})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
     <div className="max-w-md mx-auto">
       <h1 className="text-lg font-medium text-stone-800 mb-3">Estadísticas</h1>
@@ -916,6 +930,10 @@ function StatsScreen({ players, matches }) {
 
       {tab === 'ranking' && (
         <div>
+          <div className="flex items-center gap-2 mb-2">
+            <h2 className="text-sm font-medium text-stone-600">Ranking</h2>
+            <button onClick={() => setInfoAbierto('ranking')} className="w-5 h-5 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">i</button>
+          </div>
           <RankingTab stats={stats} onJugador={setJugadorId} />
           <BotonCompartirTab
             titulo="Ranking general"
@@ -925,22 +943,36 @@ function StatsScreen({ players, matches }) {
       )}
       {tab === 'estrellas' && (
         <div>
+          <div className="flex items-center gap-2 mb-2">
+            <h2 className="text-sm font-medium text-stone-600">Estrellas de calidad</h2>
+            <button onClick={() => setInfoAbierto('estrellas')} className="w-5 h-5 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">i</button>
+          </div>
           <ListaCombinada
-            items={stats.estrellasRanking}
+            items={(() => {
+              const umbral = stats.UMBRAL_RESET_ESTRELLAS_DIAS;
+              const esInactivo = (r) => r.diasSinJugar !== null && r.diasSinJugar > umbral;
+              const activos = stats.estrellasRanking.filter((r) => !esInactivo(r));
+              const inactivos = stats.estrellasRanking.filter((r) => esInactivo(r));
+              return [...activos, ...inactivos];
+            })()}
             vacio="Todavía no hay jugadores cargados."
-            render={(p) => (
-              <div key={p.id} className="border border-stone-200 rounded-xl p-3 mb-2" style={TARJETA_STATS}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm text-stone-700">{p.nombre}</span>
-                  <span className="text-sm font-medium text-emerald-700">{p.nivel ?? '-'}/10</span>
+            render={(p) => {
+              const inactivo = p.diasSinJugar !== null && p.diasSinJugar > stats.UMBRAL_RESET_ESTRELLAS_DIAS;
+              return (
+                <div key={p.id} className={'border border-stone-200 rounded-xl p-3 mb-2 ' + (inactivo ? 'opacity-60' : '')} style={TARJETA_STATS}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm text-stone-700">{p.nombre}</span>
+                    <span className="text-sm font-medium text-emerald-700">{p.nivel ?? '-'}/10</span>
+                  </div>
+                  <UltimosCirculos resultados={p.resultados} />
+                  <div className="mt-1.5">
+                    <EstrellasRow nivel={p.nivel} />
+                  </div>
+                  {inactivo && <p className="text-xs text-stone-400 mt-1">Sin actividad reciente ({p.diasSinJugar} días) — nivel reseteado a 0</p>}
+                  {!inactivo && p.nivel === null && <p className="text-xs text-stone-400 mt-1">Necesita 5 partidos jugados para calcular</p>}
                 </div>
-                <UltimosCirculos resultados={p.resultados} />
-                <div className="mt-1.5">
-                  <EstrellasRow nivel={p.nivel} />
-                </div>
-                {p.nivel === null && <p className="text-xs text-stone-400 mt-1">Necesita 5 partidos jugados para calcular</p>}
-              </div>
-            )}
+              );
+            }}
           />
           <BotonCompartirTab
             titulo="Estrellas de calidad"
@@ -1045,6 +1077,8 @@ function StatsScreen({ players, matches }) {
       )}
     </div>
     </div>
+    {infoAbierto && <InfoModal tipo={infoAbierto} onClose={() => setInfoAbierto(null)} />}
+    </>
   );
 }
 
@@ -1084,6 +1118,69 @@ function BotonCompartirTab({ titulo, subtitulo, lineas }) {
   );
 }
 
+const TABLA_CAMBIO_FILAS = [
+  [5, 0, 0, 2], [4, 1, 0, 2], [4, 0, 1, 1], [3, 2, 0, 1], [3, 1, 1, 1], [3, 0, 2, 0],
+  [2, 3, 0, 1], [2, 2, 1, 0], [2, 1, 2, 0], [2, 0, 3, -1], [1, 4, 0, 0], [1, 3, 1, 0],
+  [1, 2, 2, 0], [1, 1, 3, -1], [1, 0, 4, -2], [0, 5, 0, 0], [0, 4, 1, -1], [0, 3, 2, -1],
+  [0, 2, 3, -1], [0, 1, 4, -2], [0, 0, 5, -2],
+];
+
+function InfoModal({ tipo, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-end justify-center z-10" style={{ position: 'absolute' }}>
+      <div className="bg-white rounded-t-2xl p-5 w-full max-w-md max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-medium text-stone-800">
+            {tipo === 'ranking' ? 'Cómo funciona el Ranking' : 'Cómo funcionan las Estrellas de calidad'}
+          </h2>
+          <button onClick={onClose}><X size={20} className="text-stone-400" /></button>
+        </div>
+
+        {tipo === 'ranking' && (
+          <div className="flex flex-col gap-3 text-sm text-stone-600">
+            <p>Ordena a todos los jugadores por <strong>efectividad</strong>: el porcentaje de partidos ganados sobre el total jugado (victorias ÷ partidos jugados).</p>
+            <p>Para entrar al orden numerado hace falta haber jugado al menos <strong>3 partidos</strong>. Con menos, el jugador igual aparece en la lista, pero abajo del todo y sin puesto, con la marca "falta para rankear".</p>
+            <p>Si un jugador no jugó ningún partido en los últimos <strong>45 días</strong>, se lo considera inactivo: se corre al final de la lista para no ocupar los primeros puestos con datos viejos, pero <strong>no pierde nada</strong> — apenas vuelve a jugar, reingresa al grupo activo con toda su efectividad real.</p>
+          </div>
+        )}
+
+        {tipo === 'estrellas' && (
+          <div className="flex flex-col gap-3 text-sm text-stone-600">
+            <p>Mide el <strong>nivel de forma reciente</strong> de cada jugador, del 0 al 10. No tiene relación con el nivel manual (1 a 5) que se usa para armar los equipos parejos.</p>
+            <p>Se calcula mirando exclusivamente sus <strong>últimos 5 partidos jugados</strong> — hace falta llegar a 5 partidos en total para que empiece a calcularse.</p>
+            <p>Arranca de una base de 5 estrellas, y sube o baja según la combinación exacta de victorias, empates y derrotas de esos 5 partidos:</p>
+            <div className="border border-stone-200 rounded-xl overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-stone-50 text-stone-500">
+                    <th className="text-center py-1.5 px-1">Victorias</th>
+                    <th className="text-center py-1.5 px-1">Empates</th>
+                    <th className="text-center py-1.5 px-1">Derrotas</th>
+                    <th className="text-center py-1.5 px-1">Cambio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {TABLA_CAMBIO_FILAS.map(([v, e, d, c], i) => (
+                    <tr key={i} className="border-t border-stone-100">
+                      <td className="text-center py-1 text-stone-700">{v}</td>
+                      <td className="text-center py-1 text-stone-700">{e}</td>
+                      <td className="text-center py-1 text-stone-700">{d}</td>
+                      <td className={'text-center py-1 font-medium ' + (c > 0 ? 'text-emerald-600' : c < 0 ? 'text-red-600' : 'text-stone-400')}>
+                        {c > 0 ? '+' + c : c}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p>Si un jugador no jugó ningún partido en los últimos <strong>60 días</strong>, su nivel se resetea directamente a <strong>0</strong> — a diferencia del Ranking, acá sí se "borra" el valor, porque esta estadística busca reflejar el presente, no el historial.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StatCard({ label, value }) {
   return (
     <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'rgba(245,245,244,0.85)' }}>
@@ -1099,19 +1196,31 @@ function ListaCombinada({ items, vacio, render }) {
 }
 
 function RankingTab({ stats, onJugador }) {
-  const conMinimo = stats.ranking.filter((r) => r.pj >= 3).sort((a, b) => b.efectividad - a.efectividad);
-  const sinMinimo = stats.ranking.filter((r) => r.pj < 3);
-  const todos = [...conMinimo, ...sinMinimo];
+  const umbral = stats.UMBRAL_INACTIVIDAD_DIAS;
+  const esInactivo = (r) => r.diasSinJugar !== null && r.diasSinJugar > umbral;
+  const activos = stats.ranking.filter((r) => !esInactivo(r));
+  const inactivos = stats.ranking.filter((r) => esInactivo(r));
+  const conMinimo = activos.filter((r) => r.pj >= 3).sort((a, b) => b.efectividad - a.efectividad);
+  const sinMinimo = activos.filter((r) => r.pj < 3);
+  const inactivosOrdenados = inactivos.sort((a, b) => b.efectividad - a.efectividad);
+  const todos = [...conMinimo, ...sinMinimo, ...inactivosOrdenados];
   if (stats.ranking.length === 0) return <p className="text-stone-400 text-sm text-center py-10">Todavía no hay jugadores cargados.</p>;
   return (
     <div className="flex flex-col gap-2">
       {todos.map((r, i) => (
-        <button key={r.id} onClick={() => onJugador(r.id)} className="flex items-center gap-3 border border-stone-200 rounded-xl p-3 text-left" style={TARJETA_STATS}>
-          <span className="text-xs text-stone-400 w-4">{r.pj >= 3 ? i + 1 : '-'}</span>
+        <button
+          key={r.id}
+          onClick={() => onJugador(r.id)}
+          className={'flex items-center gap-3 border border-stone-200 rounded-xl p-3 text-left ' + (esInactivo(r) ? 'opacity-60' : '')}
+          style={TARJETA_STATS}
+        >
+          <span className="text-xs text-stone-400 w-4">{r.pj >= 3 && !esInactivo(r) ? conMinimo.indexOf(r) + 1 : '-'}</span>
           <Avatar nombre={r.nombre} size={32} />
           <div className="flex-1 min-w-0">
             <p className="text-sm text-stone-800 truncate">{r.nombre}</p>
-            <p className="text-xs text-stone-400">{r.pj} PJ {r.pj < 3 ? '· falta para rankear' : ''}</p>
+            <p className="text-xs text-stone-400">
+              {esInactivo(r) ? 'Inactivo — ' + r.diasSinJugar + ' días sin jugar' : r.pj + ' PJ' + (r.pj < 3 ? ' · falta para rankear' : '')}
+            </p>
           </div>
           <span className="text-sm font-medium text-emerald-700">{r.efectividad}%</span>
           <ChevronRight size={16} className="text-stone-300" />
