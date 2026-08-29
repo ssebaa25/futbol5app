@@ -1,6 +1,6 @@
 {
-  "name": "Fútbol 5",
-  "short_name": "Fútbol 5",
+  "name": "FOBAL 5 APP",
+  "short_name": "FOBAL 5 APP",
   "description": "App personal para el grupo de fútbol 5: jugadores, partidos y estadísticas",
   "start_url": ".",
   "display": "standalone",
