@@ -4,7 +4,7 @@
   "description": "App personal para el grupo de fútbol 5: jugadores, partidos y estadísticas",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#0f6e56",
+  "background_color": "#ffffff",
   "theme_color": "#0f6e56",
   "orientation": "portrait",
   "icons": [
