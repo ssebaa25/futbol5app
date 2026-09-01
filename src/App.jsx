@@ -930,9 +930,12 @@ function StatsScreen({ players, matches }) {
 
       {tab === 'ranking' && (
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-medium text-stone-600">Ranking</h2>
-            <button onClick={() => setInfoAbierto('ranking')} className="w-5 h-5 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">i</button>
+            <button onClick={() => setInfoAbierto('ranking')} className="flex items-center gap-1.5 text-xs text-stone-500">
+              <span className="w-5 h-5 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">i</span>
+              Info
+            </button>
           </div>
           <RankingTab stats={stats} onJugador={setJugadorId} />
           <BotonCompartirTab
@@ -943,9 +946,12 @@ function StatsScreen({ players, matches }) {
       )}
       {tab === 'estrellas' && (
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-medium text-stone-600">Estrellas de calidad</h2>
-            <button onClick={() => setInfoAbierto('estrellas')} className="w-5 h-5 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">i</button>
+            <button onClick={() => setInfoAbierto('estrellas')} className="flex items-center gap-1.5 text-xs text-stone-500">
+              <span className="w-5 h-5 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">i</span>
+              Info
+            </button>
           </div>
           <ListaCombinada
             items={(() => {
@@ -1148,6 +1154,11 @@ function InfoModal({ tipo, onClose }) {
           <div className="flex flex-col gap-3 text-sm text-stone-600">
             <p>Mide el <strong>nivel de forma reciente</strong> de cada jugador, del 0 al 10. No tiene relación con el nivel manual (1 a 5) que se usa para armar los equipos parejos.</p>
             <p>Se calcula mirando exclusivamente sus <strong>últimos 5 partidos jugados</strong> — hace falta llegar a 5 partidos en total para que empiece a calcularse.</p>
+            <div className="flex items-center gap-4 text-xs text-stone-600 bg-stone-50 rounded-lg px-3 py-2">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500"></span> Victoria</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-400"></span> Empate</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500"></span> Derrota</span>
+            </div>
             <p>Arranca de una base de 5 estrellas, y sube o baja según la combinación exacta de victorias, empates y derrotas de esos 5 partidos:</p>
             <div className="border border-stone-200 rounded-xl overflow-hidden">
               <table className="w-full text-xs">
